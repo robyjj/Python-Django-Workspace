@@ -1,13 +1,34 @@
+from typing_extensions import Concatenate
 from django.db.models.expressions import OrderBy
+from django.db.models.fields import DecimalField
 from django.shortcuts import render
 from django.core.exceptions import ObjectDoesNotExist
-from django.db.models import Q, F
+from django.db.models import Q, F, Value, Func, Count, ExpressionWrapper, query
+from django.db.models.functions import Concat
+from django.contrib.contenttypes.models import ContentType
 from django.http import HttpResponse
-from store.models import Collection, Product, OrderItem
+from store.models import Collection, Product, OrderItem, Order, Customer
+from tags.models import TaggedItem, TaggedItemManager
 # Create your views here.
 
 
 def say_hello(request):
+    try:
+        # Get Tagged Products
+        TaggedItem.objects.get_tags_for(Product, 1)
+        # content_type = ContentType.objects.get_for_model(Product)
+        # query_set = TaggedItem.objects \
+        #     .select_related('tag') \
+        #     .filter(
+        #         content_type=content_type,
+        #         object_id=1  # this should be got dynamically
+        #     )
+    except ObjectDoesNotExist:
+        pass
+    return render(request, 'hello.html', {'name': ' Jack'})
+
+
+def orm_tuts(request):
     try:
 
         #query_set = Product.objects.all()
@@ -79,6 +100,46 @@ def say_hello(request):
         # defer - defer the loading later
         query_set = Product.objects.defer('description')
 
+        # select_related to load dependent objects
+        # select related is used when the other side has only one object , for eg: Product has one collection
+        query_set = Product.objects.select_related('collection').all()
+
+        # use prefetch_related when other side has multiple objects , eg :Many Promotions in a product
+        query_set = Product.objects.prefetch_related(
+            'promotions').select_related('collection').all()
+
+        # Get last 5 orders with customer and items , incl. Product
+        query_set = Order.objects.select_related(
+            'customer').prefetch_related('orderitem_set__product').order_by('-placed_at')[:7]
+        # orders = Order.objects.select_related('customer').prefetch_related('OrderItem').select_related('Product').select_related(
+        #    'customer').filter().order_by('-placed_at')[:5]
+
+        # Expression Wrapper
+        discounted_price = ExpressionWrapper(
+            F('unit_price') * 0.8, output_field=DecimalField(6))
+        query_set = Customer.objects.annotate(
+            discounte_price=discounted_price)
+        # orders each customer placed
+        query_set = Customer.objects.annotate(
+            orders_count=Count('order')
+        )
+
+        # concatenation
+        query_set = Customer.objects.annotate(new_id=F('id') + 1)
+        query_set = Customer.objects.annotate(
+            # CONCAT
+            full_name=Func(F('first_name'), Value(' '), F(
+                'last_name'), function='CONCAT')
+        )
+
+        query_set = Customer.objects.annotate(
+            # CONCAT
+            full_name=Concat('first_name', Value(' '),
+                             'last_name')
+        )
+
+        result = list(query_set)
+
     except ObjectDoesNotExist:
         pass
-    return render(request, 'hello.html', {'name': ' Jack', 'products': list(query_set)})
+    return render(request, 'orm_tuts.html', {'name': ' Jack', 'products': result, 'orders': query_set})
