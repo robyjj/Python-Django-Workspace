@@ -1,5 +1,5 @@
-from typing_extensions import Concatenate
-from django.db.models.expressions import OrderBy
+#from typing_extensions import Concatenate
+from django.db.models.expressions import Col, OrderBy
 from django.db.models.fields import DecimalField
 from django.shortcuts import render
 from django.core.exceptions import ObjectDoesNotExist
@@ -7,25 +7,42 @@ from django.db.models import Q, F, Value, Func, Count, ExpressionWrapper, query
 from django.db.models.functions import Concat
 from django.contrib.contenttypes.models import ContentType
 from django.http import HttpResponse
+from django.db import transaction, connection
 from store.models import Collection, Product, OrderItem, Order, Customer
 from tags.models import TaggedItem, TaggedItemManager
 # Create your views here.
 
 
+# decoarator , the entire method will be inside a transaction
+# @transaction.atomic()
 def say_hello(request):
     try:
-        # Get Tagged Products
-        TaggedItem.objects.get_tags_for(Product, 1)
-        # content_type = ContentType.objects.get_for_model(Product)
-        # query_set = TaggedItem.objects \
-        #     .select_related('tag') \
-        #     .filter(
-        #         content_type=content_type,
-        #         object_id=1  # this should be got dynamically
-        #     )
+        # using with so that cursor  get automatically closed
+        with connection.cursor() as cursor:
+            cursor.execute('SQL queries go here')
+            # store proc with parameters
+            cursor.callproc('get_customers', [1, 2, 'a'])
+            cursor.close()
+
+        # raw Queries
+        query_set = Product.objects.raw('SELCT * from store_product')
+
+        # Transactions
+        with transaction.atomic():
+            order = Order()
+            order.customer_id = 1
+            order.save()
+
+            item = OrderItem()
+            item.order = order
+            item.product_id = 1
+            item.quantity = 1
+            item.unit_price = 10
+            item.save()
+
     except ObjectDoesNotExist:
         pass
-    return render(request, 'hello.html', {'name': ' Jack'})
+    return render(request, 'hello.html', {'name': ' Jack', 'result': list(query_set)})
 
 
 def orm_tuts(request):
@@ -137,6 +154,44 @@ def orm_tuts(request):
             full_name=Concat('first_name', Value(' '),
                              'last_name')
         )
+
+        # Get Tagged Products - Custom Manager
+        TaggedItem.objects.get_tags_for(Product, 1)
+
+  # creating Objects
+
+        collection = Collection()
+        collection.title = 'Games'
+
+        collection.featured_product = Product(pk=1)
+        # or
+        #collection.featured_product_id = 1
+        collection.save()
+        collection.id
+
+        # or
+
+        # collection = Collection.objects.create(
+        #    title='Flowers', featured_product=1)
+        # collection.id
+
+        # updating objects
+        #  can't update one field in django , we need to get the entire object first
+        collection = Collection.objects.get(pk=11)
+        #collection = Collection(pk=11)
+        collection.featured_product = None
+        collection.save()
+
+        # While updating to avaoid an extra read
+        Collection.objects.filter(pk=11).update(featured_product=None)
+
+        # Deleting Objects
+        collection = Collection(pk=11)
+        collection.delete()
+
+        # or
+
+        Collection.objects.filter(id__gt=5).delete()
 
         result = list(query_set)
 
