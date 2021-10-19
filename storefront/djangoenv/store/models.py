@@ -1,5 +1,7 @@
+from django.core import validators
 from django.db import models
 from django.db.models.deletion import CASCADE, PROTECT, SET_NULL
+from django.core.validators import MinValueValidator
 from django.db.models.fields import EmailField, SlugField
 
 
@@ -15,17 +17,33 @@ class Collection(models.Model):
                                          null=True,
                                          related_name='+')
 
+    def __str__(self) -> str:
+        return self.title
+
+    class Meta:
+        ordering = ['title']
+
 
 class Product(models.Model):
     title = models.CharField(max_length=255)
-    slug = models.SlugField(default='-')
+    slug = models.SlugField()
     description = models.TextField()
-    unit_price = models.DecimalField(max_digits=6, decimal_places=2)
-    inventory = models.IntegerField()
+    unit_price = models.DecimalField(
+        max_digits=6,
+        decimal_places=2,
+        validators=[MinValueValidator(1)])
+    inventory = models.IntegerField(
+        validators=[MinValueValidator(1)])
     last_update = models.DateTimeField(auto_now=True)
     collection = models.ForeignKey(Collection, on_delete=PROTECT)
     # , related_name='products')
-    promotions = models.ManyToManyField(Promotion)
+    promotions = models.ManyToManyField(Promotion, blank=True)  # Optional
+
+    def __str__(self) -> str:
+        return self.title
+
+    class Meta:
+        ordering = ['title']
 
 
 class Customer(models.Model):
@@ -45,6 +63,9 @@ class Customer(models.Model):
     membership = models.CharField(max_length=1,
                                   choices=MEMBERSHIP_CHOICES,
                                   default=MEMBERSHIP_BRONZE)
+
+    def __str__(self) -> str:
+        return f'{self.first_name} {self.last_name}'
 
     class Meta:
         db_table = 'store_customer'
